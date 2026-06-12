@@ -23,6 +23,7 @@ function ChatContent() {
 
   const socketRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -81,6 +82,9 @@ function ChatContent() {
         // Sort messages chronologically by timestamp/id
         const sorted = data.sort((a: any, b: any) => a.id - b.id);
         setMessages(sorted);
+        api.post(`/conversations/${activeConversation.id}/mark_read/`).catch(err => {
+          console.error('Failed to mark read', err);
+        });
       } catch (err) {
         console.error('Failed to load messages', err);
       } finally {
@@ -129,6 +133,37 @@ function ChatContent() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, messagesLoading]);
 
+  // File Attachment handler
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeConversation || !user) return;
+
+    const formData = new FormData();
+    formData.append('conversation', activeConversation.id.toString());
+    formData.append('message_type', 'image');
+    formData.append('image', file);
+
+    try {
+      const res = await api.post('/messages/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const savedMessage = res.data;
+
+      setMessages(prev => [...prev, savedMessage]);
+
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({
+          message: savedMessage
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to upload image', err);
+      alert('Failed to send image attachment.');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   // Send Message handler
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,13 +208,7 @@ function ChatContent() {
   }
 
   return (
-    <main className="container" style={{ 
-      paddingBottom: '90px', 
-      paddingTop: '20px', 
-      height: 'calc(100vh - 20px)', 
-      display: 'flex', 
-      flexDirection: 'column'
-    }}>
+    <main className="container messages-container">
       <header style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
         {!showSidebarOnMobile && (
           <button 
@@ -403,13 +432,30 @@ function ChatContent() {
                             wordBreak: 'break-word'
                           }}>
                             {msg.message}
+                            {msg.message_type === 'image' && msg.image && (
+                              <div style={{ marginTop: '6px', borderRadius: '8px', overflow: 'hidden' }}>
+                                <img 
+                                  src={msg.image.startsWith('http') ? msg.image : `${API_BASE}${msg.image}`} 
+                                  alt="Attached" 
+                                  style={{ width: '100%', maxHeight: '240px', objectFit: 'cover', display: 'block' }} 
+                                />
+                              </div>
+                            )}
                             <div style={{
                               fontSize: '0.65rem',
                               color: isMe ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)',
-                              textAlign: 'right',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'flex-end',
+                              gap: '4px',
                               marginTop: '4px'
                             }}>
                               {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {isMe && (
+                                <span style={{ fontSize: '0.8rem', marginLeft: '4px' }}>
+                                  {msg.is_read ? '✓✓' : '✓'}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -430,6 +476,34 @@ function ChatContent() {
                     alignItems: 'center' 
                   }}
                 >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      width: '44px',
+                      height: '44px',
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--secondary)',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      flexShrink: 0
+                    }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                    </svg>
+                  </button>
                   <input
                     type="text"
                     value={newMessageText}

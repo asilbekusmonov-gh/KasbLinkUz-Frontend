@@ -305,3 +305,22 @@ input, textarea, select {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* =========================================
+   MESSAGES LAYOUT
+   ========================================= */
+.messages-container {
+  height: calc(100vh - 20px);
+  padding-top: 20px;
+  padding-bottom: 90px;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 769px) {
+  .messages-container {
+    height: 100vh;
+    padding-top: calc(var(--topbar-height) + 24px);
+    padding-bottom: 24px;
+  }
+}

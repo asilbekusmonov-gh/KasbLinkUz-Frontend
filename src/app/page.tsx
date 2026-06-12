@@ -18,6 +18,10 @@ export default function Home() {
   const [filteredServices, setFilteredServices] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+  
   // Customer Specific State
   const [searchQuery, setSearchQuery] = useState('');
   const [showOrderModal, setShowOrderModal] = useState(false);
@@ -113,6 +117,7 @@ export default function Home() {
     }
 
     setFilteredServices(result);
+    setCurrentPage(1);
   }, [selectedCategory, searchQuery, services]);
 
   const fetchWorkerOrders = () => {
@@ -148,7 +153,7 @@ export default function Home() {
         description: orderDesc,
         address: buildOrderAddress(),
         service: targetService.id,
-        worker: targetService.worker, // Foreign key to WorkerProfile
+        worker: targetService.worker_detail?.id,
       });
       setShowOrderModal(false);
       setOrderTitle('');
@@ -160,7 +165,25 @@ export default function Home() {
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.non_field_errors?.[0] || err.response?.data?.detail || 'Failed to place order.');
+      const errorData = err.response?.data;
+      let errorMsg = 'Failed to place order.';
+      if (errorData) {
+        if (typeof errorData === 'string') {
+          errorMsg = errorData;
+        } else if (errorData.detail) {
+          errorMsg = errorData.detail;
+        } else if (errorData.non_field_errors) {
+          errorMsg = errorData.non_field_errors.join(', ');
+        } else {
+          const fieldErrors = Object.entries(errorData)
+            .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+            .join('\n');
+          if (fieldErrors) {
+            errorMsg = fieldErrors;
+          }
+        }
+      }
+      alert(errorMsg);
     } finally {
       setOrderSubmitting(false);
     }
@@ -202,11 +225,14 @@ export default function Home() {
     }
   };
 
+  const totalPages = Math.ceil(filteredServices.length / itemsPerPage);
+  const paginatedServices = filteredServices.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   if (loading) return <div className="container" style={{ paddingTop: '2rem', textAlign: 'center' }}>Loading...</div>;
   if (!isAuthenticated) return null;
 
   return (
-    <main className="container animate-fade-in" style={{ paddingBottom: '90px', paddingTop: '20px' }}>
+    <main className="container animate-fade-in">
       <header style={{ marginBottom: '24px' }}>
         <h1 className="font-bold" style={{ fontSize: '1.5rem', letterSpacing: '-0.025em' }}>
           {user?.role === 'worker' ? 'Received Jobs' : 'Service Feed'}
@@ -215,6 +241,62 @@ export default function Home() {
           {user?.role === 'worker' ? 'Manage incoming job requests' : 'Hire a professional for your needs'}
         </p>
       </header>
+
+      {/* Welcome Banner */}
+      <div className="glass-card" style={{
+        padding: '24px',
+        marginBottom: '20px',
+        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(139, 92, 246, 0.06) 100%)',
+        borderLeft: '3px solid var(--primary)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '16px',
+        flexWrap: 'wrap'
+      }}>
+        <div style={{ flex: 1, minWidth: '180px' }}>
+          <h2 className="font-semibold" style={{ fontSize: '1.15rem', marginBottom: '4px' }}>
+            {new Date().getHours() < 12 ? '☀️ Good morning' : new Date().getHours() < 18 ? '🌤️ Good afternoon' : '🌙 Good evening'},{' '}
+            {(user as any)?.first_name || (user as any)?.username || 'there'}!
+          </h2>
+          <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>
+            {user?.role === 'worker'
+              ? 'Check your incoming jobs and stay on top of your schedule.'
+              : 'Find trusted professionals and book services in minutes.'}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{
+            padding: '12px 20px',
+            borderRadius: '12px',
+            backgroundColor: 'var(--card-bg)',
+            border: '1px solid var(--border-color)',
+            textAlign: 'center',
+            minWidth: '80px'
+          }}>
+            <div className="font-bold" style={{ fontSize: '1.3rem', color: 'var(--primary)' }}>
+              {user?.role === 'worker' ? orders.length : filteredServices.length}
+            </div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500, marginTop: '2px' }}>
+              {user?.role === 'worker' ? 'Jobs' : 'Services'}
+            </div>
+          </div>
+          <div style={{
+            padding: '12px 20px',
+            borderRadius: '12px',
+            backgroundColor: 'var(--card-bg)',
+            border: '1px solid var(--border-color)',
+            textAlign: 'center',
+            minWidth: '80px'
+          }}>
+            <div className="font-bold" style={{ fontSize: '1.3rem', color: '#10b981' }}>
+              {categories.length}
+            </div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500, marginTop: '2px' }}>
+              Categories
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Success Banner */}
       {successMsg && (
@@ -311,12 +393,12 @@ export default function Home() {
 
           {/* Services list */}
           <section style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {filteredServices.length === 0 ? (
+            {paginatedServices.length === 0 ? (
               <div className="glass-card" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
                 No services found. Try another category or query.
               </div>
             ) : (
-              filteredServices.map((service) => (
+              paginatedServices.map((service) => (
                 <div key={service.id} className="glass-card animate-scale" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
@@ -440,6 +522,60 @@ export default function Home() {
               ))
             )}
           </section>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '12px',
+              marginTop: '24px',
+              marginBottom: '10px'
+            }}>
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--card-bg)',
+                  color: currentPage === 1 ? 'var(--text-muted)' : 'var(--foreground)',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  transition: 'all 0.2s',
+                  opacity: currentPage === 1 ? 0.5 : 1
+                }}
+              >
+                Previous
+              </button>
+              
+              <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+                Page <strong style={{ color: 'var(--foreground)' }}>{currentPage}</strong> of {totalPages}
+              </span>
+
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--card-bg)',
+                  color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--foreground)',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  transition: 'all 0.2s',
+                  opacity: currentPage === totalPages ? 0.5 : 1
+                }}
+              >
+                Next
+              </button>
+            </div>
+          )}
 
           {/* Order Request Modal */}
           {showOrderModal && targetService && (

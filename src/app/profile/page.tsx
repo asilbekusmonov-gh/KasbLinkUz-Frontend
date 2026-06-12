@@ -63,6 +63,8 @@ export default function ProfilePage() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [cancelOrderIdConfirm, setCancelOrderIdConfirm] = useState<number | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -162,7 +164,7 @@ export default function ProfilePage() {
 
   const fetchPortfolios = () => {
     setPortfoliosLoading(true);
-    api.get('/portfolio/')
+    api.get('/portfolio/?me=true')
       .then(res => {
         setPortfolios(Array.isArray(res.data) ? res.data : res.data.results || []);
       })
@@ -364,14 +366,14 @@ export default function ProfilePage() {
     try {
       await api.patch(`/orders/${orderId}/cancelled/`);
       fetchOrders();
+      setCancelOrderIdConfirm(null);
     } catch (err: any) {
       alert(err.response?.data?.detail || err.response?.data?.[0] || 'Failed to cancel order.');
     }
   };
 
   const handleLogout = () => {
-    logout();
-    router.push('/login');
+    setShowLogoutConfirm(true);
   };
 
   const getStatusStyle = (status: string) => {
@@ -388,7 +390,7 @@ export default function ProfilePage() {
   if (!isAuthenticated) return null;
 
   return (
-    <main className="container animate-fade-in" style={{ paddingBottom: '90px', paddingTop: '20px' }}>
+    <main className="container animate-fade-in">
       <header style={{ marginBottom: '24px' }}>
         <h1 className="font-bold" style={{ fontSize: '1.5rem', letterSpacing: '-0.03em' }}>Profile</h1>
         <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '4px' }}>
@@ -486,6 +488,43 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Quick Stats Row */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '10px',
+          gridColumn: '1 / -1'
+        }}>
+          {[
+            { label: 'Total', value: orders.length, color: 'var(--primary)', bg: 'rgba(59, 130, 246, 0.1)' },
+            { label: 'Pending', value: orders.filter((o: any) => o.status === 'pending').length, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
+            { label: 'Active', value: orders.filter((o: any) => o.status === 'accepted').length, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
+            { label: 'Done', value: orders.filter((o: any) => o.status === 'completed').length, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' },
+          ].map((stat) => (
+            <div key={stat.label} className="glass-card" style={{
+              padding: '16px 10px',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <span className="font-bold" style={{ fontSize: '1.35rem', color: stat.color, lineHeight: 1 }}>{stat.value}</span>
+              <span style={{
+                fontSize: '0.7rem',
+                color: 'var(--text-muted)',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: stat.color, display: 'inline-block' }} />
+                {stat.label}
+              </span>
+            </div>
+          ))}
         </div>
 
         {/* Right column: Content Tabs */}
@@ -610,7 +649,7 @@ export default function ProfilePage() {
                         <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                           {(order.status === 'pending' || order.status === 'accepted') && (
                             <button
-                              onClick={() => cancelOrder(order.id)}
+                              onClick={() => setCancelOrderIdConfirm(order.id)}
                               style={{
                                 flex: 1,
                                 padding: '10px',
@@ -1544,6 +1583,113 @@ export default function ProfilePage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2000, padding: '16px'
+        }}>
+          <div className="glass-card animate-scale" style={{ width: '100%', maxWidth: '380px', padding: '24px', backgroundColor: 'var(--background)' }}>
+            <h3 className="font-bold" style={{ fontSize: '1.2rem', marginBottom: '10px' }}>Log Out</h3>
+            <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '20px' }}>Are you sure you want to log out of KasbLink?</p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--foreground)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontSize: '0.85rem'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  logout();
+                  router.push('/login');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#ef4444',
+                  color: 'white',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontSize: '0.85rem'
+                }}
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Cancel Order Confirmation Modal */}
+      {cancelOrderIdConfirm !== null && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2000, padding: '16px'
+        }}>
+          <div className="glass-card animate-scale" style={{ width: '100%', maxWidth: '380px', padding: '24px', backgroundColor: 'var(--background)' }}>
+            <h3 className="font-bold" style={{ fontSize: '1.2rem', marginBottom: '10px' }}>Cancel Order</h3>
+            <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '20px' }}>Are you sure you want to cancel this order? This action cannot be undone.</p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setCancelOrderIdConfirm(null)}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--foreground)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontSize: '0.85rem'
+                }}
+              >
+                No, Keep it
+              </button>
+              <button
+                type="button"
+                onClick={() => cancelOrder(cancelOrderIdConfirm)}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#ef4444',
+                  color: 'white',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontSize: '0.85rem'
+                }}
+              >
+                Yes, Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
