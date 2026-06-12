@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1/').replace('/api/v1/', '');
+
 export default function Home() {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
@@ -22,7 +24,12 @@ export default function Home() {
   const [targetService, setTargetService] = useState<any>(null);
   const [orderTitle, setOrderTitle] = useState('');
   const [orderDesc, setOrderDesc] = useState('');
-  const [orderAddress, setOrderAddress] = useState('');
+  const [orderStreet, setOrderStreet] = useState('');
+  const [orderCityId, setOrderCityId] = useState('');
+  const [orderDistrictId, setOrderDistrictId] = useState('');
+  const [cities, setCities] = useState<any[]>([]);
+  const [districts, setDistricts] = useState<any[]>([]);
+  const [districtsLoading, setDistrictsLoading] = useState(false);
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -67,6 +74,28 @@ export default function Home() {
     }
   }, [isAuthenticated, user]);
 
+  useEffect(() => {
+    if (isAuthenticated && user?.role === 'customer') {
+      api.get('/cities/')
+        .then(res => setCities(Array.isArray(res.data) ? res.data : res.data.results || []))
+        .catch(err => console.error('Failed to load cities', err));
+    }
+  }, [isAuthenticated, user]);
+
+  useEffect(() => {
+    if (!orderCityId) {
+      setDistricts([]);
+      setOrderDistrictId('');
+      return;
+    }
+
+    setDistrictsLoading(true);
+    api.get(`/districts/?city=${orderCityId}`)
+      .then(res => setDistricts(Array.isArray(res.data) ? res.data : res.data.results || []))
+      .catch(err => console.error('Failed to load districts', err))
+      .finally(() => setDistrictsLoading(false));
+  }, [orderCityId]);
+
   // Filter Logic for Customer
   useEffect(() => {
     let result = services;
@@ -94,23 +123,39 @@ export default function Home() {
       .finally(() => setOrdersLoading(false));
   };
 
+  const buildOrderAddress = () => {
+    const cityName = cities.find((c) => c.id === Number(orderCityId))?.name;
+    const districtName = districts.find((d) => d.id === Number(orderDistrictId))?.name;
+    const parts: string[] = [];
+    if (orderStreet.trim()) parts.push(orderStreet.trim());
+    if (districtName) parts.push(districtName);
+    if (cityName) parts.push(cityName);
+    return parts.join(', ');
+  };
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetService) return;
+    if (!orderCityId || !orderDistrictId) {
+      alert('Please select a region and district.');
+      return;
+    }
 
     setOrderSubmitting(true);
     try {
       await api.post('/orders/', {
         title: orderTitle,
         description: orderDesc,
-        address: orderAddress,
+        address: buildOrderAddress(),
         service: targetService.id,
         worker: targetService.worker, // Foreign key to WorkerProfile
       });
       setShowOrderModal(false);
       setOrderTitle('');
       setOrderDesc('');
-      setOrderAddress('');
+      setOrderStreet('');
+      setOrderCityId('');
+      setOrderDistrictId('');
       setSuccessMsg('Order placed successfully! Check your profile for status.');
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
@@ -131,17 +176,43 @@ export default function Home() {
     }
   };
 
+  const handleStartChat = async (workerUserId: number) => {
+    if (!user) return;
+    try {
+      const res = await api.get('/conversations/');
+      const conversations = Array.isArray(res.data) ? res.data : res.data.results || [];
+      const existing = conversations.find((c: any) => 
+        (c.client === user.id && c.worker === workerUserId) ||
+        (c.client === workerUserId && c.worker === user.id)
+      );
+
+      if (existing) {
+        router.push(`/messages?id=${existing.id}`);
+        return;
+      }
+
+      const createRes = await api.post('/conversations/', {
+        client: user.id,
+        worker: workerUserId
+      });
+      router.push(`/messages?id=${createRes.data.id}`);
+    } catch (err) {
+      console.error('Failed to initiate chat', err);
+      alert('Failed to start chat session.');
+    }
+  };
+
   if (loading) return <div className="container" style={{ paddingTop: '2rem', textAlign: 'center' }}>Loading...</div>;
   if (!isAuthenticated) return null;
 
   return (
     <main className="container animate-fade-in" style={{ paddingBottom: '90px', paddingTop: '20px' }}>
       <header style={{ marginBottom: '24px' }}>
-        <h1 className="font-bold text-primary" style={{ fontSize: '1.75rem', letterSpacing: '-0.025em' }}>
-          KasbLink
+        <h1 className="font-bold" style={{ fontSize: '1.5rem', letterSpacing: '-0.025em' }}>
+          {user?.role === 'worker' ? 'Received Jobs' : 'Service Feed'}
         </h1>
         <p className="text-muted font-medium" style={{ fontSize: '0.9rem', marginTop: '4px' }}>
-          {user?.role === 'worker' ? 'Worker Dashboard - Received Jobs' : 'Service Feed - Hire a professional'}
+          {user?.role === 'worker' ? 'Manage incoming job requests' : 'Hire a professional for your needs'}
         </p>
       </header>
 
@@ -265,25 +336,106 @@ export default function Home() {
                     {service.description || 'No description provided.'}
                   </p>
                   
-                  <button 
-                    onClick={() => {
-                      setTargetService(service);
-                      setShowOrderModal(true);
-                    }}
-                    style={{
-                      marginTop: '8px',
-                      padding: '12px',
-                      borderRadius: '10px',
-                      border: 'none',
-                      backgroundColor: 'var(--primary)',
-                      color: 'white',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    Send Request
-                  </button>
+                  {service.worker_detail && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '10px 0',
+                      borderTop: '1px solid var(--border-color)',
+                      borderBottom: '1px solid var(--border-color)',
+                      marginTop: '4px'
+                    }}>
+                      <div style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--secondary)',
+                        overflow: 'hidden',
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        {service.worker_detail.user_detail?.profile_image ? (
+                          <img
+                            src={service.worker_detail.user_detail.profile_image.startsWith('http')
+                              ? service.worker_detail.user_detail.profile_image
+                              : `${API_BASE}${service.worker_detail.user_detail.profile_image}`}
+                            alt="Worker"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
+                          </svg>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {service.worker_detail.user_detail?.first_name 
+                              ? `${service.worker_detail.user_detail.first_name} ${service.worker_detail.user_detail.last_name || ''}`
+                              : service.worker_detail.user_detail?.username || 'Professional'}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: '#eab308', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            ★ {service.worker_detail.rating || '0.0'}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {service.worker_detail.bio || 'Available for bookings'} • {service.worker_detail.completed_orders_count || 0} jobs
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                    {service.worker_detail?.user_detail && (
+                      <button 
+                        onClick={() => handleStartChat(service.worker_detail.user_detail.id)}
+                        style={{
+                          flex: 1,
+                          padding: '12px',
+                          borderRadius: '10px',
+                          border: '1px solid var(--primary)',
+                          backgroundColor: 'transparent',
+                          color: 'var(--primary)',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        Chat
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => {
+                        setTargetService(service);
+                        setOrderTitle(service.name || '');
+                        setOrderDesc('');
+                        setOrderStreet('');
+                        setOrderCityId('');
+                        setOrderDistrictId('');
+                        setShowOrderModal(true);
+                      }}
+                      style={{
+                        flex: 2,
+                        padding: '12px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        backgroundColor: 'var(--primary)',
+                        color: 'white',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      Send Request
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -301,7 +453,7 @@ export default function Home() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              zIndex: 2000,
+              zIndex: 9999,
               padding: '16px'
             }}>
               <div className="glass-card" style={{ width: '100%', maxWidth: '450px', padding: '28px', backgroundColor: 'var(--background)' }}>
@@ -348,13 +500,63 @@ export default function Home() {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 500 }}>Address *</label>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 500 }}>Region (Viloyat) *</label>
+                    <select
+                      required
+                      value={orderCityId}
+                      onChange={(e) => {
+                        setOrderCityId(e.target.value);
+                        setOrderDistrictId('');
+                      }}
+                      style={{
+                        padding: '10px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color)',
+                        backgroundColor: 'var(--card-bg)',
+                        color: 'var(--foreground)',
+                        outline: 'none'
+                      }}
+                    >
+                      <option value="">Select region</option>
+                      {cities.map((city) => (
+                        <option key={city.id} value={city.id}>{city.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 500 }}>District (Tuman) *</label>
+                    <select
+                      required
+                      value={orderDistrictId}
+                      onChange={(e) => setOrderDistrictId(e.target.value)}
+                      disabled={!orderCityId || districtsLoading}
+                      style={{
+                        padding: '10px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color)',
+                        backgroundColor: 'var(--card-bg)',
+                        color: 'var(--foreground)',
+                        outline: 'none',
+                        opacity: !orderCityId || districtsLoading ? 0.7 : 1
+                      }}
+                    >
+                      <option value="">
+                        {!orderCityId ? 'Select a region first' : districtsLoading ? 'Loading...' : 'Select district'}
+                      </option>
+                      {districts.map((district) => (
+                        <option key={district.id} value={district.id}>{district.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 500 }}>Street / Address detail</label>
                     <input
                       type="text"
-                      required
-                      placeholder="Your location/address"
-                      value={orderAddress}
-                      onChange={(e) => setOrderAddress(e.target.value)}
+                      placeholder="e.g. Chilonzor 15, house 42"
+                      value={orderStreet}
+                      onChange={(e) => setOrderStreet(e.target.value)}
                       style={{
                         padding: '10px',
                         borderRadius: '8px',

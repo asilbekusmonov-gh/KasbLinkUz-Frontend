@@ -2,10 +2,13 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 
 export default function TopBar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { isAuthenticated, logout } = useAuth();
 
   // Hide on auth pages
   if (pathname === '/login' || pathname === '/register') return null;
@@ -57,18 +60,37 @@ export default function TopBar() {
       <Link href="/" className="topbar-brand">
         KasbLink
       </Link>
-      <nav className="topbar-nav">
-        {navItems.map((item) => (
-          <Link
-            key={item.path}
-            href={item.path}
-            className={`topbar-link ${pathname === item.path ? 'active' : ''}`}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <nav className="topbar-nav">
+          {navItems.map((item) => (
+            <Link
+              key={item.path}
+              href={item.path}
+              className={`topbar-link ${pathname === item.path ? 'active' : ''}`}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+        {isAuthenticated && (
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              router.push('/login');
+            }}
+            className="topbar-logout"
           >
-            {item.icon}
-            <span>{item.label}</span>
-          </Link>
-        ))}
-      </nav>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Log out
+          </button>
+        )}
+      </div>
     </header>
   );
 }
