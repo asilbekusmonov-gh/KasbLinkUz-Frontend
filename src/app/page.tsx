@@ -674,15 +674,13 @@ export default function Home() {
                       required
                       value={orderDistrictId}
                       onChange={(e) => setOrderDistrictId(e.target.value)}
-                      disabled={!orderCityId || districtsLoading}
                       style={{
                         padding: '10px',
                         borderRadius: '8px',
                         border: '1px solid var(--border-color)',
                         backgroundColor: 'var(--card-bg)',
                         color: 'var(--foreground)',
-                        outline: 'none',
-                        opacity: !orderCityId || districtsLoading ? 0.7 : 1
+                        outline: 'none'
                       }}
                     >
                       <option value="">
