@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1/').replace('/api/v1/', '');
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/api\/v1\/?$/, '');
 
 export default function Home() {
   const { user, loading, isAuthenticated } = useAuth();
@@ -15,7 +15,7 @@ export default function Home() {
   const [categories, setCategories] = useState<any[]>([]);
   const [categoryMap, setCategoryMap] = useState<Record<number, string>>({});
   const [services, setServices] = useState<any[]>([]);
-  const [filteredServices, setFilteredServices] = useState<any[]>([]);
+  const [totalServices, setTotalServices] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   
   // Pagination State
@@ -47,7 +47,6 @@ export default function Home() {
     }
   }, [loading, isAuthenticated, router]);
 
-  // Load Categories & Services (for Customers)
   useEffect(() => {
     if (isAuthenticated) {
       // Fetch categories
@@ -62,16 +61,7 @@ export default function Home() {
         })
         .catch(err => console.error('Failed to load categories', err));
 
-      if (user?.role === 'customer') {
-        // Fetch services
-        api.get('/services/')
-          .then(res => {
-            const data = Array.isArray(res.data) ? res.data : res.data.results || [];
-            setServices(data);
-            setFilteredServices(data);
-          })
-          .catch(err => console.error('Failed to load services', err));
-      } else if (user?.role === 'worker') {
+      if (user?.role === 'worker') {
         // Fetch received orders
         fetchWorkerOrders();
       }
@@ -100,25 +90,35 @@ export default function Home() {
       .finally(() => setDistrictsLoading(false));
   }, [orderCityId]);
 
-  // Filter Logic for Customer
+  // Filter Logic for Customer (Fetch from API)
   useEffect(() => {
-    let result = services;
+    if (!isAuthenticated || user?.role !== 'customer') return;
+    
+    const fetchTimer = setTimeout(() => {
+      const params = new URLSearchParams();
+      params.append('page', currentPage.toString());
+      if (selectedCategory !== null) {
+        params.append('category', selectedCategory.toString());
+      }
+      if (searchQuery.trim()) {
+        params.append('search', searchQuery.trim());
+      }
+      
+      api.get(`/services/?${params.toString()}`)
+        .then(res => {
+          if (Array.isArray(res.data)) {
+            setServices(res.data);
+            setTotalServices(res.data.length);
+          } else {
+            setServices(res.data.results || []);
+            setTotalServices(res.data.count || 0);
+          }
+        })
+        .catch(err => console.error('Failed to load services', err));
+    }, 300);
 
-    if (selectedCategory !== null) {
-      result = result.filter(s => s.category === selectedCategory);
-    }
-
-    if (searchQuery.trim() !== '') {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(s => 
-        (s.name && s.name.toLowerCase().includes(query)) ||
-        (s.description && s.description.toLowerCase().includes(query))
-      );
-    }
-
-    setFilteredServices(result);
-    setCurrentPage(1);
-  }, [selectedCategory, searchQuery, services]);
+    return () => clearTimeout(fetchTimer);
+  }, [currentPage, selectedCategory, searchQuery, isAuthenticated, user]);
 
   const fetchWorkerOrders = () => {
     setOrdersLoading(true);
@@ -225,8 +225,7 @@ export default function Home() {
     }
   };
 
-  const totalPages = Math.ceil(filteredServices.length / itemsPerPage);
-  const paginatedServices = filteredServices.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = Math.ceil(totalServices / itemsPerPage);
 
   if (loading) return <div className="container" style={{ paddingTop: '2rem', textAlign: 'center' }}>Loading...</div>;
   if (!isAuthenticated) return null;
@@ -274,7 +273,7 @@ export default function Home() {
             minWidth: '80px'
           }}>
             <div className="font-bold" style={{ fontSize: '1.3rem', color: 'var(--primary)' }}>
-              {user?.role === 'worker' ? orders.length : filteredServices.length}
+              {user?.role === 'worker' ? orders.length : totalServices}
             </div>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500, marginTop: '2px' }}>
               {user?.role === 'worker' ? 'Jobs' : 'Services'}
@@ -328,7 +327,10 @@ export default function Home() {
               type="text"
               placeholder="Search services (e.g. Electrician, Plumbing)..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
               style={{
                 width: '100%',
                 padding: '12px 16px',
@@ -355,7 +357,10 @@ export default function Home() {
             }}
           >
             <button
-              onClick={() => setSelectedCategory(null)}
+              onClick={() => {
+                setSelectedCategory(null);
+                setCurrentPage(1);
+              }}
               style={{
                 padding: '8px 16px',
                 borderRadius: '20px',
@@ -373,7 +378,10 @@ export default function Home() {
             {categories.map((cat) => (
               <button
                 key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
+                onClick={() => {
+                  setSelectedCategory(cat.id);
+                  setCurrentPage(1);
+                }}
                 style={{
                   padding: '8px 16px',
                   borderRadius: '20px',
@@ -393,12 +401,12 @@ export default function Home() {
 
           {/* Services list */}
           <section style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {paginatedServices.length === 0 ? (
+            {services.length === 0 ? (
               <div className="glass-card" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
                 No services found. Try another category or query.
               </div>
             ) : (
-              paginatedServices.map((service) => (
+              services.map((service) => (
                 <div key={service.id} className="glass-card animate-scale" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>

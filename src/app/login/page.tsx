@@ -5,15 +5,26 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import Link from 'next/link';
+import styles from './page.module.css';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
+
   const { login } = useAuth();
   const router = useRouter();
+
+  const getErrorMessage = (err: unknown) => {
+    if (typeof err === 'object' && err !== null) {
+      const typedError = err as { response?: { data?: { detail?: string } } };
+      if (typeof typedError.response?.data?.detail === 'string') {
+        return typedError.response.data.detail;
+      }
+    }
+    return 'Login failed. Please check credentials.';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,90 +35,76 @@ export default function LoginPage() {
       const res = await api.post('auth/login/', { username, password });
       await login(res.data.access, res.data.refresh);
       router.push('/');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed. Please check credentials.');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="container animate-fade-in" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="glass-card" style={{ width: '100%', padding: '32px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <h1 className="font-bold text-primary" style={{ fontSize: '2rem', letterSpacing: '-0.05em' }}>
-            KasbLink
-          </h1>
-          <p className="text-muted" style={{ marginTop: '8px' }}>Login to your account</p>
+    <main className={`container animate-fade-in ${styles.page}`}>
+      <div className={styles.backgroundGlow} aria-hidden="true" />
+      <div className={`glass-card ${styles.card}`}>
+        <div className={styles.header}>
+          <span className={styles.badge}>Welcome back</span>
+          <h1 className="font-bold text-primary">KasbLink</h1>
+          <p className="text-muted">Login to continue booking and messaging.</p>
         </div>
 
         {error && (
-          <div style={{ padding: '12px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: '8px', marginBottom: '16px', fontSize: '0.9rem' }}>
+          <div className={styles.errorBox} role="alert">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label className="font-medium" style={{ fontSize: '0.9rem' }}>Username</label>
-            <input 
-              type="text" 
+        <form onSubmit={handleSubmit} className={styles.form}>
+          <div className={styles.field}>
+            <label htmlFor="username" className="font-medium">
+              Username
+            </label>
+            <input
+              id="username"
+              type="text"
+              required
+              autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Enter your username"
-              style={{
-                padding: '12px',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
-                backgroundColor: 'var(--background)',
-                color: 'var(--foreground)',
-                outline: 'none',
-                fontSize: '1rem'
-              }}
+              className={styles.input}
             />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label className="font-medium" style={{ fontSize: '0.9rem' }}>Password</label>
-            <input 
-              type="password" 
+          <div className={styles.field}>
+            <label htmlFor="password" className="font-medium">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              required
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
-              style={{
-                padding: '12px',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
-                backgroundColor: 'var(--background)',
-                color: 'var(--foreground)',
-                outline: 'none',
-                fontSize: '1rem'
-              }}
+              className={styles.input}
             />
           </div>
 
-          <button 
+          <button
             type="submit"
             disabled={loading}
-            className="animate-scale"
-            style={{
-              marginTop: '12px',
-              padding: '14px',
-              borderRadius: '8px',
-              border: 'none',
-              backgroundColor: 'var(--primary)',
-              color: 'white',
-              fontWeight: 600,
-              fontSize: '1rem',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.7 : 1
-            }}
+            className={`animate-scale ${styles.submitButton}`}
           >
             {loading ? 'Logging in...' : 'Sign In'}
           </button>
         </form>
-        <p style={{ marginTop: '20px', textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-          Don't have an account? <Link href="/register" style={{ color: 'var(--primary)', fontWeight: 600 }}>Register here</Link>
+
+        <p className={styles.footerText}>
+          Don&apos;t have an account?{' '}
+          <Link href="/register" className={styles.registerLink}>
+            Register here
+          </Link>
         </p>
       </div>
     </main>

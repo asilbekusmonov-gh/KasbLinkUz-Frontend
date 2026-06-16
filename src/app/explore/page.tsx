@@ -5,15 +5,17 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1/').replace('/api/v1/', '');
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/api\/v1\/?$/, '');
 
 export default function ExplorePage() {
   const { user, isAuthenticated, loading } = useAuth();
   const router = useRouter();
 
   const [portfolios, setPortfolios] = useState<any[]>([]);
+  const [totalPortfolios, setTotalPortfolios] = useState(0);
   const [categories, setCategories] = useState<any[]>([]);
-  const [filteredPortfolios, setFilteredPortfolios] = useState<any[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [dataLoading, setDataLoading] = useState(true);
@@ -29,46 +31,46 @@ export default function ExplorePage() {
     }
   }, [loading, isAuthenticated, router]);
 
-  // Load Categories & Portfolios
+  // Load Categories once
   useEffect(() => {
     if (isAuthenticated) {
-      const fetchData = async () => {
-        try {
-          const [catsRes, portRes] = await Promise.all([
-            api.get('/categories/'),
-            api.get('/portfolio/')
-          ]);
-          setCategories(catsRes.data);
-          const portData = Array.isArray(portRes.data) ? portRes.data : portRes.data.results || [];
-          setPortfolios(portData);
-          setFilteredPortfolios(portData);
-        } catch (err) {
-          console.error('Failed to load explore data', err);
-        } finally {
-          setDataLoading(false);
-        }
-      };
-      fetchData();
+      api.get('/categories/')
+        .then(res => setCategories(res.data))
+        .catch(err => console.error('Failed to load categories', err));
     }
   }, [isAuthenticated]);
 
-  // Filter Logic
+  // Filter & Pagination Logic (Fetch from API)
   useEffect(() => {
-    let result = portfolios;
-    if (selectedCategory !== null) {
-      result = result.filter(p => p.category === selectedCategory);
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(p => 
-        (p.title || '').toLowerCase().includes(q) ||
-        (p.description || '').toLowerCase().includes(q) ||
-        (p.worker_detail?.user_detail?.first_name || '').toLowerCase().includes(q) ||
-        (p.worker_detail?.user_detail?.last_name || '').toLowerCase().includes(q)
-      );
-    }
-    setFilteredPortfolios(result);
-  }, [searchQuery, selectedCategory, portfolios]);
+    if (!isAuthenticated) return;
+    setDataLoading(true);
+
+    const fetchTimer = setTimeout(() => {
+      const params = new URLSearchParams();
+      params.append('page', currentPage.toString());
+      if (selectedCategory !== null) {
+        params.append('category', selectedCategory.toString());
+      }
+      if (searchQuery.trim()) {
+        params.append('search', searchQuery.trim());
+      }
+
+      api.get(`/portfolio/?${params.toString()}`)
+        .then(res => {
+          if (Array.isArray(res.data)) {
+            setPortfolios(res.data);
+            setTotalPortfolios(res.data.length);
+          } else {
+            setPortfolios(res.data.results || []);
+            setTotalPortfolios(res.data.count || 0);
+          }
+        })
+        .catch(err => console.error('Failed to load portfolios', err))
+        .finally(() => setDataLoading(false));
+    }, 300);
+
+    return () => clearTimeout(fetchTimer);
+  }, [currentPage, selectedCategory, searchQuery, isAuthenticated]);
 
   // Chat initiation helper
   const handleStartChat = async (workerUserId: number) => {
@@ -127,7 +129,7 @@ export default function ExplorePage() {
       }}>
         <div className="glass-card" style={{ padding: '12px', textAlign: 'center' }}>
           <div className="font-bold" style={{ fontSize: '1.2rem', color: 'var(--primary)' }}>
-            {portfolios.length}
+            {totalPortfolios}
           </div>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500, marginTop: '2px' }}>
             Total Projects
@@ -157,7 +159,10 @@ export default function ExplorePage() {
           type="text"
           placeholder="Search portfolios (e.g. Bathroom, Smart Home)..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setCurrentPage(1);
+          }}
           style={{
             width: '100%',
             padding: '12px 16px',
@@ -174,7 +179,10 @@ export default function ExplorePage() {
         {/* Category Filters */}
         <div className="no-scrollbar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
           <button
-            onClick={() => setSelectedCategory(null)}
+            onClick={() => {
+              setSelectedCategory(null);
+              setCurrentPage(1);
+            }}
             style={{
               padding: '8px 16px',
               borderRadius: '20px',
@@ -193,7 +201,10 @@ export default function ExplorePage() {
           {categories.map((cat) => (
             <button
               key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
+              onClick={() => {
+                setSelectedCategory(cat.id);
+                setCurrentPage(1);
+              }}
               style={{
                 padding: '8px 16px',
                 borderRadius: '20px',
@@ -216,7 +227,7 @@ export default function ExplorePage() {
       {/* Portfolios Grid */}
       {dataLoading ? (
         <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 0' }}>Loading projects...</div>
-      ) : filteredPortfolios.length === 0 ? (
+      ) : portfolios.length === 0 ? (
         <div className="glass-card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
           No portfolios match your search or filter criteria.
         </div>
@@ -226,7 +237,7 @@ export default function ExplorePage() {
           gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', 
           gap: '20px' 
         }}>
-          {filteredPortfolios.map((p) => (
+          {portfolios.map((p) => (
             <div 
               key={p.id} 
               onClick={() => setSelectedProject(p)}
@@ -349,6 +360,60 @@ export default function ExplorePage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {Math.ceil(totalPortfolios / itemsPerPage) > 1 && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '12px',
+          marginTop: '24px',
+          marginBottom: '10px'
+        }}>
+          <button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--card-bg)',
+              color: currentPage === 1 ? 'var(--text-muted)' : 'var(--foreground)',
+              cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              transition: 'all 0.2s',
+              opacity: currentPage === 1 ? 0.5 : 1
+            }}
+          >
+            Previous
+          </button>
+          
+          <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+            Page <strong style={{ color: 'var(--foreground)' }}>{currentPage}</strong> of {Math.ceil(totalPortfolios / itemsPerPage)}
+          </span>
+
+          <button
+            disabled={currentPage === Math.ceil(totalPortfolios / itemsPerPage)}
+            onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(totalPortfolios / itemsPerPage)))}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--card-bg)',
+              color: currentPage === Math.ceil(totalPortfolios / itemsPerPage) ? 'var(--text-muted)' : 'var(--foreground)',
+              cursor: currentPage === Math.ceil(totalPortfolios / itemsPerPage) ? 'not-allowed' : 'pointer',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              transition: 'all 0.2s',
+              opacity: currentPage === Math.ceil(totalPortfolios / itemsPerPage) ? 0.5 : 1
+            }}
+          >
+            Next
+          </button>
         </div>
       )}
 
