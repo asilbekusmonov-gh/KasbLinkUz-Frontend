@@ -452,7 +452,7 @@ export default function Home() {
                           <img
                             src={service.worker_detail.user_detail.profile_image.startsWith('http')
                               ? service.worker_detail.user_detail.profile_image
-                              : `${API_BASE}${service.worker_detail.user_detail.profile_image}`}
+                              : service.worker_detail.user_detail.profile_image.startsWith('/') ? `${API_BASE}${service.worker_detail.user_detail.profile_image}` : `${API_BASE}/${service.worker_detail.user_detail.profile_image}`}
                             alt="Worker"
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           />

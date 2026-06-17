@@ -306,7 +306,7 @@ function ChatContent() {
                     }}>
                       {partner?.profile_image ? (
                         <img
-                          src={partner.profile_image.startsWith('http') ? partner.profile_image : `${API_BASE}${partner.profile_image}`}
+                          src={partner.profile_image.startsWith('http') ? partner.profile_image : partner.profile_image.startsWith('/') ? `${API_BASE}${partner.profile_image}` : `${API_BASE}/${partner.profile_image}`}
                           alt="Avatar"
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
@@ -368,7 +368,7 @@ function ChatContent() {
                       <img
                         src={getOtherParticipant(activeConversation).profile_image.startsWith('http') 
                           ? getOtherParticipant(activeConversation).profile_image 
-                          : `${API_BASE}${getOtherParticipant(activeConversation).profile_image}`}
+                          : getOtherParticipant(activeConversation).profile_image.startsWith('/') ? `${API_BASE}${getOtherParticipant(activeConversation).profile_image}` : `${API_BASE}/${getOtherParticipant(activeConversation).profile_image}`}
                         alt="Avatar"
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
@@ -435,7 +435,7 @@ function ChatContent() {
                             {msg.message_type === 'image' && msg.image && (
                               <div style={{ marginTop: '6px', borderRadius: '8px', overflow: 'hidden' }}>
                                 <img 
-                                  src={msg.image.startsWith('http') ? msg.image : `${API_BASE}${msg.image}`} 
+                                  src={msg.image.startsWith('http') ? msg.image : msg.image.startsWith('/') ? `${API_BASE}${msg.image}` : `${API_BASE}/${msg.image}`} 
                                   alt="Attached" 
                                   style={{ width: '100%', maxHeight: '240px', objectFit: 'cover', display: 'block' }} 
                                 />

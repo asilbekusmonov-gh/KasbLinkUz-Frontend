@@ -104,7 +104,8 @@ export default function ExplorePage() {
 
   const getImageUrl = (path: string) => {
     if (!path) return '';
-    return path.startsWith('http') ? path : `${API_BASE}${path}`;
+    if (path.startsWith('http')) return path;
+    return path.startsWith('/') ? `${API_BASE}${path}` : `${API_BASE}/${path}`;
   };
 
   if (loading || !isAuthenticated) {

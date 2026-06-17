@@ -80,7 +80,7 @@ export default function ProfilePage() {
       setLastName((user as any).last_name || '');
       if ((user as any).profile_image) {
         const img = (user as any).profile_image;
-        setProfileImage(img.startsWith('http') ? img : `${API_BASE}${img}`);
+        setProfileImage(img.startsWith('http') ? img : img.startsWith('/') ? `${API_BASE}${img}` : `${API_BASE}/${img}`);
       }
       fetchOrders();
       fetchCategories();
@@ -185,7 +185,7 @@ export default function ProfilePage() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       const img = res.data.profile_image;
-      setProfileImage(img.startsWith('http') ? img : `${API_BASE}${img}`);
+      setProfileImage(img.startsWith('http') ? img : img.startsWith('/') ? `${API_BASE}${img}` : `${API_BASE}/${img}`);
     } catch (err) {
       console.error('Failed to upload image', err);
       alert('Failed to upload profile picture.');
@@ -906,7 +906,7 @@ export default function ProfilePage() {
                     <div key={p.id} className="glass-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                       <div style={{ 
                         height: '160px', 
-                        backgroundImage: `url(${p.image.startsWith('http') ? p.image : `${API_BASE}${p.image}`})`, 
+                        backgroundImage: `url(${p.image.startsWith('http') ? p.image : p.image.startsWith('/') ? `${API_BASE}${p.image}` : `${API_BASE}/${p.image}`})`, 
                         backgroundSize: 'cover', 
                         backgroundPosition: 'center',
                         position: 'relative'
